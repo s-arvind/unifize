@@ -27,11 +27,14 @@ To poke at the service layer directly, without the API:
 ```bash
 python3 -c "
 import asyncio
-from discount_service import DiscountService
-from fake_data import cart_items, customer, payment_info
+from services.discount_service import DiscountService
+from seed import seed
 
 async def main():
-    result = await DiscountService().calculate_cart_discounts(cart_items, customer, payment_info)
+    seeded = seed()
+    result = await DiscountService().calculate_cart_discounts(
+        seeded['cart_items'], seeded['customer'], seeded['payment_info']
+    )
     print(result)
 
 asyncio.run(main())
@@ -41,13 +44,14 @@ asyncio.run(main())
 ## Files
 
 - `enums.py` — `BrandTier`, `CustomerTier`.
-- `models/` — dataclass domain layer (`Product`, `CartItem`, `PaymentInfo`, `CustomerProfile`, `DiscountedPrice`). No FastAPI/pydantic dependency.
-- `rules.py` — one class per discount type (`BrandDiscountRule`, `CategoryDiscountRule`, `VoucherRule`, `BankOfferRule`).
-- `discount_service.py` — `DiscountService`, the given core interface.
+- `models/` — dataclass domain layer. `Entity` (`id`/`created_at`/`updated_at`/`deleted`, ulid-generated id) is the base class for `CartItem`, `PaymentInfo`, `DiscountedPrice`. `Product` and `CustomerProfile` keep their own caller-supplied `id` (real business/catalog keys) and don't extend `Entity`. No FastAPI/pydantic dependency in this layer.
+- `services/rules.py` — one class per discount type (`BrandDiscountRule`, `CategoryDiscountRule`, `VoucherRule`, `BankOfferRule`).
+- `services/discount_service.py` — `DiscountService`, the given core interface.
 - `schemas/` — pydantic request/response DTOs for the API layer, with `to_domain()` converters into `models/`. Kept separate so the service logic stays framework-agnostic.
-- `routers.py` — FastAPI `APIRouter` with `POST /discounts/calculate` and `POST /discounts/validate`.
+- `routers/discounts.py` — FastAPI `APIRouter` with `POST /discounts/calculate` and `POST /discounts/validate`.
 - `main.py` — FastAPI app, mounts the router, `/health` endpoint.
-- `fake_data.py` — the doc's dummy scenario (PUMA T-shirt, T-shirts category, ICICI bank offer).
+- `core/db.py` — `InMemoryDB`, a singleton keyed by entity name then record key (`insert`/`find_one`/`find`/`update`/`delete`/`clear`).
+- `seed.py` — populates `core.db` with the doc's dummy scenario (PUMA T-shirt, T-shirts category, ICICI bank offer). `seed()` clears and re-inserts, so it's safe to call more than once.
 - `tests/test_discount_service.py` — pytest coverage of the service layer.
 - `tests/test_api.py` — pytest coverage of the HTTP layer via FastAPI's `TestClient`.
 - `PROBLEM_STATEMENT.md` — the assignment text as given, saved for reference.

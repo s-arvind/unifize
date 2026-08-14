@@ -9,5 +9,5 @@ class CartItemSchema(BaseModel):
     quantity: int
     size: str
 
-    def to_domain(self) -> CartItem:
-        return CartItem(product=self.product.to_domain(), quantity=self.quantity, size=self.size)
+    def to_entity(self) -> CartItem:
+        return CartItem(product=self.product.to_entity(), quantity=self.quantity, size=self.size)

@@ -11,7 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Dict, List, Optional
 
 from models import CartItem, CustomerProfile, DiscountedPrice, PaymentInfo
-from rules import BankOfferRule, BrandDiscountRule, CategoryDiscountRule, VoucherRule
+from services.rules import BankOfferRule, BrandDiscountRule, CategoryDiscountRule, VoucherRule
 
 TWO_PLACES = Decimal("0.01")
 
@@ -75,6 +75,13 @@ class DiscountService:
         messages: List[str] = []
         subtotal = Decimal("0")
 
+        voucher = self._find_voucher(voucher_code) if voucher_code else None
+        if voucher_code and not voucher:
+            messages.append(f"Voucher {voucher_code} does not exist")
+        elif voucher:
+            _ok, reason = voucher.eligibility(cart_items, customer)
+            messages.append(reason)
+
         for item in cart_items:
             line_price = item.product.base_price * item.quantity
 
@@ -90,22 +97,12 @@ class DiscountService:
                     line_price -= discount_amount
                     applied_discounts[rule.name] = applied_discounts.get(rule.name, Decimal("0")) + discount_amount
 
-            if voucher_code:
-                voucher = self._find_voucher(voucher_code)
-                if voucher and voucher.applies_to(item):
-                    discount_amount = line_price * voucher.percent / Decimal("100")
-                    line_price -= discount_amount
-                    applied_discounts[voucher.name] = applied_discounts.get(voucher.name, Decimal("0")) + discount_amount
+            if voucher and voucher.applies_to(item):
+                discount_amount = line_price * voucher.percent / Decimal("100")
+                line_price -= discount_amount
+                applied_discounts[voucher.name] = applied_discounts.get(voucher.name, Decimal("0")) + discount_amount
 
             subtotal += line_price
-
-        if voucher_code:
-            voucher = self._find_voucher(voucher_code)
-            if not voucher:
-                messages.append(f"Voucher {voucher_code} does not exist")
-            else:
-                _ok, reason = voucher.eligibility(cart_items, customer)
-                messages.append(reason)
 
         if payment_info:
             for rule in self.bank_rules:

@@ -2,8 +2,13 @@ from decimal import Decimal
 
 import pytest
 
-from discount_service import DiscountService
-from fake_data import cart_items, customer, payment_info
+from services.discount_service import DiscountService
+from seed import seed
+
+_seeded = seed()
+cart_items = _seeded["cart_items"]
+customer = _seeded["customer"]
+payment_info = _seeded["payment_info"]
 
 
 @pytest.mark.asyncio

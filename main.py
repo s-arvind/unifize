@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 
-from routers import router
+from routers import discounts_router
 
 app = FastAPI(title="Discount Service API")
-app.include_router(router)
+app.include_router(discounts_router)
 
 
 @app.get("/health")

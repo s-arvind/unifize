@@ -8,5 +8,5 @@ class CustomerProfileSchema(BaseModel):
     id: str
     tier: CustomerTier
 
-    def to_domain(self) -> CustomerProfile:
+    def to_entity(self) -> CustomerProfile:
         return CustomerProfile(**self.model_dump())

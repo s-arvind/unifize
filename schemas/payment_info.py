@@ -10,5 +10,5 @@ class PaymentInfoSchema(BaseModel):
     bank_name: Optional[str] = None
     card_type: Optional[str] = None
 
-    def to_domain(self) -> PaymentInfo:
+    def to_entity(self) -> PaymentInfo:
         return PaymentInfo(**self.model_dump())

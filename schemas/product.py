@@ -14,5 +14,5 @@ class ProductSchema(BaseModel):
     base_price: Decimal
     current_price: Decimal
 
-    def to_domain(self) -> Product:
+    def to_entity(self) -> Product:
         return Product(**self.model_dump())

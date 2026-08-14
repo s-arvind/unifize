@@ -29,6 +29,8 @@ def test_calculate_discounts_endpoint_stacks_brand_category_and_bank_offer():
 
     assert response.status_code == 200
     body = response.json()
+    assert body["id"]
+    assert body["created_at"] > 0
     assert body["original_price"] == "1500.00"
     assert body["final_price"] == "729.00"
     assert body["applied_discounts"]["Min 40% off on PUMA"] == "600.00"
