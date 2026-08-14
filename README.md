@@ -1,0 +1,71 @@
+# Discount Service
+
+Implementation of `PROBLEM_STATEMENT.md` (Unifize Backend Developer Assignment, Python track).
+
+## Run it
+
+```bash
+pip install -r requirements.txt
+pytest -v
+```
+
+To poke at it directly:
+
+```bash
+python3 -c "
+import asyncio
+from discount_service import DiscountService
+from fake_data import cart_items, customer, payment_info
+
+async def main():
+    result = await DiscountService().calculate_cart_discounts(cart_items, customer, payment_info)
+    print(result)
+
+asyncio.run(main())
+"
+```
+
+## Files
+
+- `discount_service.py` — data models, discount rules, `DiscountService`. Kept in one file per request.
+- `fake_data.py` — the doc's dummy scenario (PUMA T-shirt, T-shirts category, ICICI bank offer).
+- `test_discount_service.py` — pytest coverage of the happy path.
+- `PROBLEM_STATEMENT.md` — the assignment text as given, saved for reference.
+
+## Design
+
+Each discount type (`BrandDiscountRule`, `CategoryDiscountRule`, `VoucherRule`, `BankOfferRule`) is its own
+class implementing a small `applies_to` / `percent_off` contract. `DiscountService` holds a rule catalog
+(injected at construction, defaulted to the assignment's scenario) and applies rules in the order the
+interface's docstring specifies: brand → category → coupon codes → bank offers. Adding a new discount
+type means adding a new rule class and passing it into the catalog — `DiscountService` itself doesn't
+change.
+
+Stacking is sequential/multiplicative on the per-item price (each stage discounts the *already-discounted*
+price, not the original), which matches the "Additional 10% off" wording in the business scenario. Bank
+offers apply last, on the cart subtotal, since they're a payment-method-level discount rather than a
+per-item one.
+
+## Assumptions / gaps filled in
+
+1. **`CustomerProfile`** is used in the given service interface but never defined in the doc's data models.
+   Added minimally: `id: str` and `tier: CustomerTier` (`NEW` / `REGULAR` / `VIP`), since the
+   `validate_discount_code` docstring calls out "customer tier requirements" as something to handle.
+
+2. **`calculate_cart_discounts` has no way to pass a voucher code** in the signature given by the doc,
+   even though its docstring says to apply coupon codes as a stacking stage. Added an optional
+   `voucher_code: Optional[str] = None` keyword argument (default `None`, so the original call shape still
+   works) so that stage is actually reachable. `validate_discount_code` is kept as given, for checking
+   eligibility independently of applying it.
+
+3. **`Product.current_price`** ("after brand/category discount") is not used as an input — the service
+   computes brand/category discounts itself from `base_price` using the rule catalog, since that's the
+   behavior the interface's docstring asks for. `current_price` is treated as a pre-existing field on the
+   model that this service is responsible for producing the value of, not consuming.
+
+4. Only the happy path from the dummy scenario plus the interface's documented cases (brand exclusion,
+   category restriction, tier requirement, unknown code) are handled — no attempt at exhaustive edge-case
+   coverage, per the assignment's explicit scope note.
+
+5. Amounts are rounded to 2 decimal places (`ROUND_HALF_UP`) at the point each discount is recorded and at
+   the final price, to avoid `Decimal` fractions leaking into `applied_discounts`.
