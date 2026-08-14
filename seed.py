@@ -1,22 +1,11 @@
-"""Populates the in-memory db with the 'Multiple Discount Scenario' from
-PROBLEM_STATEMENT.md:
-
-    - PUMA T-shirt with "Min 40% off"
-    - Additional 10% off on T-shirts category
-    - ICICI bank offer of 10% instant discount
-
-Replaces fake_data.py: instead of module-level objects, this writes
-through core.db so the dummy scenario lives in the same store the rest
-of the app reads from. Re-running seed() clears and re-inserts, so it's
-safe to call repeatedly (e.g. once per test module).
-"""
+"""Populates core.db with the dummy scenario and discount rule catalog. Safe to call repeatedly — clears and re-inserts."""
 
 from decimal import Decimal
 from typing import List
 
 from core.db import db
-from enums import BrandTier, CustomerTier
-from models import CartItem, CustomerProfile, PaymentInfo, Product
+from enums import BrandTier, Category, CustomerTier, DiscountType
+from models import DISCOUNT_RULES, CartItem, CustomerProfile, DiscountRule, PaymentInfo, Product
 
 PRODUCTS = "products"
 CART_ITEMS = "cart_items"
@@ -25,16 +14,16 @@ PAYMENT_INFOS = "payment_infos"
 
 
 def seed() -> dict:
-    for entity in (PRODUCTS, CART_ITEMS, CUSTOMERS, PAYMENT_INFOS):
+    for entity in (PRODUCTS, CART_ITEMS, CUSTOMERS, PAYMENT_INFOS, DISCOUNT_RULES):
         db.clear(entity)
 
     puma_tshirt = Product(
         id="prod-puma-tshirt-001",
         brand="PUMA",
         brand_tier=BrandTier.PREMIUM,
-        category="T-shirts",
-        base_price=Decimal("1500.00"),
-        current_price=Decimal("1500.00"),
+        category=Category.T_SHIRTS,
+        base_price=150000,  # 1500.00 -> 150000 paisa
+        current_price=150000,
     )
     db.insert(PRODUCTS, puma_tshirt.id, puma_tshirt)
 
@@ -46,6 +35,14 @@ def seed() -> dict:
 
     payment_info = PaymentInfo(method="CARD", bank_name="ICICI", card_type="CREDIT")
     db.insert(PAYMENT_INFOS, payment_info.id, payment_info)
+
+    for rule in (
+        DiscountRule(type=DiscountType.BRAND, percent=Decimal("40"), brand="PUMA"),
+        DiscountRule(type=DiscountType.CATEGORY, percent=Decimal("10"), category=Category.T_SHIRTS),
+        DiscountRule(type=DiscountType.VOUCHER, percent=Decimal("69"), code="SUPER69"),
+        DiscountRule(type=DiscountType.BANK_OFFER, percent=Decimal("10"), bank_name="ICICI"),
+    ):
+        db.insert(DISCOUNT_RULES, rule.id, rule)
 
     cart_items: List[CartItem] = db.find(CART_ITEMS)
 

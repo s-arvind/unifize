@@ -1,54 +1,41 @@
-"""Discount service for the fashion e-commerce scenario in PROBLEM_STATEMENT.md.
+"""Discount service. Rules are read from core.db (entity DISCOUNT_RULES), not hardcoded.
 
-Stacking order (per the assignment's docstring contract):
-    1. Brand-specific discounts (per item, across categories)
-    2. Category-specific discounts (per item)
-    3. Voucher / coupon codes (per item, subject to exclusions)
-    4. Bank card offers (cart-level, on the post-discount subtotal)
+Stacking order: brand/category (per item) -> voucher (per item) -> bank offer (cart subtotal).
 """
 
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
-from models import CartItem, CustomerProfile, DiscountedPrice, PaymentInfo
-from services.rules import BankOfferRule, BrandDiscountRule, CategoryDiscountRule, VoucherRule
+from core.db import InMemoryDB
+from core.db import db as default_db
+from enums import DiscountType
+from models import DISCOUNT_RULES, CartItem, CustomerProfile, DiscountedPrice, DiscountRule, PaymentInfo
 
-TWO_PLACES = Decimal("0.01")
+
+def _percent_of(amount: int, percent: Decimal) -> int:
+    """amount * percent / 100 in paisa, rounded half up."""
+    return int((Decimal(amount) * percent / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def _round(amount: Decimal) -> Decimal:
-    return amount.quantize(TWO_PLACES, rounding=ROUND_HALF_UP)
+def _best_match(rules: List[DiscountRule], matches: Callable[[DiscountRule], bool]) -> Optional[DiscountRule]:
+    """Highest-percent matching rule — same-type matches don't stack."""
+    candidates = [rule for rule in rules if matches(rule)]
+    return max(candidates, key=lambda rule: rule.percent, default=None)
 
 
 class DiscountService:
-    """Applies brand/category/voucher/bank discounts in that order.
+    """Reads its rule catalog from core.db fresh on every call."""
 
-    Rule catalogs default to the assignment's dummy scenario so the class
-    works out of the box, but can be overridden for other scenarios/tests.
-    """
+    def __init__(self, db: Optional[InMemoryDB] = None) -> None:
+        self.db = db or default_db
 
-    def __init__(
-        self,
-        brand_rules: Optional[List[BrandDiscountRule]] = None,
-        category_rules: Optional[List[CategoryDiscountRule]] = None,
-        voucher_rules: Optional[List[VoucherRule]] = None,
-        bank_rules: Optional[List[BankOfferRule]] = None,
-    ) -> None:
-        self.brand_rules = brand_rules if brand_rules is not None else [
-            BrandDiscountRule(brand="PUMA", percent=Decimal("40")),
-        ]
-        self.category_rules = category_rules if category_rules is not None else [
-            CategoryDiscountRule(category="T-shirts", percent=Decimal("10")),
-        ]
-        self.voucher_rules = voucher_rules if voucher_rules is not None else [
-            VoucherRule(code="SUPER69", percent=Decimal("69")),
-        ]
-        self.bank_rules = bank_rules if bank_rules is not None else [
-            BankOfferRule(bank_name="ICICI", percent=Decimal("10")),
-        ]
+    def _rules(self, discount_type: DiscountType) -> List[DiscountRule]:
+        return [rule for rule in self.db.find(DISCOUNT_RULES) if rule.type is discount_type]
 
-    def _find_voucher(self, code: str) -> Optional[VoucherRule]:
-        return next((v for v in self.voucher_rules if v.code.lower() == code.lower()), None)
+    def _find_voucher(self, code: str) -> Optional[DiscountRule]:
+        return next(
+            (rule for rule in self._rules(DiscountType.VOUCHER) if rule.code.lower() == code.lower()), None
+        )
 
     async def calculate_cart_discounts(
         self,
@@ -57,23 +44,11 @@ class DiscountService:
         payment_info: Optional[PaymentInfo] = None,
         voucher_code: Optional[str] = None,
     ) -> DiscountedPrice:
-        """
-        Calculate final price after applying discount logic:
-        - First apply brand/category discounts
-        - Then apply coupon codes
-        - Then apply bank offers
+        original_price = sum(item.product.base_price * item.quantity for item in cart_items)
 
-        `voucher_code` is optional and not part of the assignment's given
-        signature (which has no way to pass a code in) — added so the
-        "coupon codes" stacking stage is actually reachable. See README.
-        """
-        original_price = _round(
-            sum((item.product.base_price * item.quantity for item in cart_items), Decimal("0"))
-        )
-
-        applied_discounts: Dict[str, Decimal] = {}
+        applied_discounts: Dict[str, int] = {}
         messages: List[str] = []
-        subtotal = Decimal("0")
+        subtotal = 0
 
         voucher = self._find_voucher(voucher_code) if voucher_code else None
         if voucher_code and not voucher:
@@ -82,37 +57,37 @@ class DiscountService:
             _ok, reason = voucher.eligibility(cart_items, customer)
             messages.append(reason)
 
+        brand_rules = self._rules(DiscountType.BRAND)
+        category_rules = self._rules(DiscountType.CATEGORY)
+        bank_rules = self._rules(DiscountType.BANK_OFFER)
+
         for item in cart_items:
             line_price = item.product.base_price * item.quantity
 
-            for rule in self.brand_rules:
-                if rule.applies_to(item):
-                    discount_amount = line_price * rule.percent_off(item) / Decimal("100")
-                    line_price -= discount_amount
-                    applied_discounts[rule.name] = applied_discounts.get(rule.name, Decimal("0")) + discount_amount
+            best_brand = _best_match(brand_rules, lambda rule, item=item: rule.applies_to_item(item))
+            best_category = _best_match(category_rules, lambda rule, item=item: rule.applies_to_item(item))
 
-            for rule in self.category_rules:
-                if rule.applies_to(item):
-                    discount_amount = line_price * rule.percent_off(item) / Decimal("100")
+            for rule in (best_brand, best_category):
+                if rule:
+                    discount_amount = _percent_of(line_price, rule.percent)
                     line_price -= discount_amount
-                    applied_discounts[rule.name] = applied_discounts.get(rule.name, Decimal("0")) + discount_amount
+                    applied_discounts[rule.name] = applied_discounts.get(rule.name, 0) + discount_amount
 
-            if voucher and voucher.applies_to(item):
-                discount_amount = line_price * voucher.percent / Decimal("100")
+            if voucher and voucher.applies_to_item(item):
+                discount_amount = _percent_of(line_price, voucher.percent)
                 line_price -= discount_amount
-                applied_discounts[voucher.name] = applied_discounts.get(voucher.name, Decimal("0")) + discount_amount
+                applied_discounts[voucher.name] = applied_discounts.get(voucher.name, 0) + discount_amount
 
             subtotal += line_price
 
         if payment_info:
-            for rule in self.bank_rules:
-                if rule.applies_to(payment_info):
-                    discount_amount = subtotal * rule.percent / Decimal("100")
-                    subtotal -= discount_amount
-                    applied_discounts[rule.name] = applied_discounts.get(rule.name, Decimal("0")) + discount_amount
+            best_bank = _best_match(bank_rules, lambda rule: rule.applies_to_payment(payment_info))
+            if best_bank:
+                discount_amount = _percent_of(subtotal, best_bank.percent)
+                subtotal -= discount_amount
+                applied_discounts[best_bank.name] = applied_discounts.get(best_bank.name, 0) + discount_amount
 
-        final_price = _round(subtotal)
-        applied_discounts = {name: _round(amount) for name, amount in applied_discounts.items()}
+        final_price = subtotal
 
         if not messages:
             messages.append(
@@ -132,13 +107,7 @@ class DiscountService:
         cart_items: List[CartItem],
         customer: CustomerProfile,
     ) -> bool:
-        """
-        Validate if a discount code can be applied.
-        Handle e-commerce-specific cases like:
-        - Brand exclusions
-        - Category restrictions
-        - Customer tier requirements
-        """
+        """Handles brand exclusions, category restrictions, customer tier requirements."""
         voucher = self._find_voucher(code)
         if not voucher:
             return False

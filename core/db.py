@@ -1,10 +1,4 @@
-"""Singleton in-memory store, keyed by entity name then record key.
-
-Pattern carried over from an earlier practice project: `InMemoryDB.__new__`
-enforces a single instance even if someone calls the class directly, and
-`db` is the shared instance modules should import. Each entity gets its
-own {key -> record} dict plus an insertion-order index list.
-"""
+"""Singleton in-memory store, keyed by entity name then record key."""
 
 import time
 from typing import Any, Dict, List

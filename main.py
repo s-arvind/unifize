@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 
 from routers import discounts_router
+from seed import seed
 
 app = FastAPI(title="Discount Service API")
 app.include_router(discounts_router)
+seed()
 
 
 @app.get("/health")

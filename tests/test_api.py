@@ -12,8 +12,8 @@ CALCULATE_PAYLOAD = {
                 "brand": "PUMA",
                 "brand_tier": "premium",
                 "category": "T-shirts",
-                "base_price": "1500.00",
-                "current_price": "1500.00",
+                "base_price": 150000,
+                "current_price": 150000,
             },
             "quantity": 1,
             "size": "M",
@@ -31,9 +31,9 @@ def test_calculate_discounts_endpoint_stacks_brand_category_and_bank_offer():
     body = response.json()
     assert body["id"]
     assert body["created_at"] > 0
-    assert body["original_price"] == "1500.00"
-    assert body["final_price"] == "729.00"
-    assert body["applied_discounts"]["Min 40% off on PUMA"] == "600.00"
+    assert body["original_price"] == 1500.00
+    assert body["final_price"] == 729.00
+    assert body["applied_discounts"]["Min 40% off on PUMA"] == 600.00
 
 
 def test_validate_discount_code_endpoint_true_for_applicable_voucher():

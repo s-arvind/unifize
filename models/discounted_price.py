@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Dict
 
 from models.entity import Entity
@@ -7,7 +6,7 @@ from models.entity import Entity
 
 @dataclass(kw_only=True)
 class DiscountedPrice(Entity):
-    original_price: Decimal
-    final_price: Decimal
-    applied_discounts: Dict[str, Decimal]  # discount_name -> amount
+    original_price: int  # paisa
+    final_price: int  # paisa
+    applied_discounts: Dict[str, int]  # discount_name -> amount in paisa
     message: str
