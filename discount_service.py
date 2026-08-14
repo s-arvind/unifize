@@ -5,180 +5,13 @@ Stacking order (per the assignment's docstring contract):
     2. Category-specific discounts (per item)
     3. Voucher / coupon codes (per item, subject to exclusions)
     4. Bank card offers (cart-level, on the post-discount subtotal)
-
-`CustomerProfile` is not defined in the assignment's data models (it is used
-in the service interface but never declared) — it is added here, minimal,
-to satisfy the given method signatures.
 """
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
-from enum import Enum
 from typing import Dict, List, Optional
 
-
-# ---------------------------------------------------------------------------
-# Data models (given by the assignment, treated as black boxes)
-# ---------------------------------------------------------------------------
-
-class BrandTier(Enum):
-    PREMIUM = "premium"
-    REGULAR = "regular"
-    BUDGET = "budget"
-
-
-@dataclass
-class Product:
-    id: str
-    brand: str
-    brand_tier: BrandTier
-    category: str
-    base_price: Decimal
-    current_price: Decimal  # After brand/category discount
-
-
-@dataclass
-class CartItem:
-    product: Product
-    quantity: int
-    size: str
-
-
-@dataclass
-class PaymentInfo:
-    method: str  # CARD, UPI, etc
-    bank_name: Optional[str]
-    card_type: Optional[str]  # CREDIT, DEBIT
-
-
-@dataclass
-class DiscountedPrice:
-    original_price: Decimal
-    final_price: Decimal
-    applied_discounts: Dict[str, Decimal]  # discount_name -> amount
-    message: str
-
-
-# ---------------------------------------------------------------------------
-# CustomerProfile — undefined in the doc, added minimally (see module docstring)
-# ---------------------------------------------------------------------------
-
-class CustomerTier(Enum):
-    NEW = "new"
-    REGULAR = "regular"
-    VIP = "vip"
-
-
-@dataclass
-class CustomerProfile:
-    id: str
-    tier: CustomerTier
-
-
-# ---------------------------------------------------------------------------
-# Discount rules — one class per discount type, so adding a new discount type
-# means adding a new rule class, not touching DiscountService.
-# ---------------------------------------------------------------------------
-
-class DiscountRule(ABC):
-    name: str
-
-    @abstractmethod
-    def applies_to(self, item: CartItem) -> bool:
-        """Whether this rule applies to a given cart item."""
-
-    @abstractmethod
-    def percent_off(self, item: CartItem) -> Decimal:
-        """Percent (0-100) to take off this item's price."""
-
-
-@dataclass
-class BrandDiscountRule(DiscountRule):
-    brand: str
-    percent: Decimal
-    name: str = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.name = f"Min {self.percent}% off on {self.brand}"
-
-    def applies_to(self, item: CartItem) -> bool:
-        return item.product.brand.lower() == self.brand.lower()
-
-    def percent_off(self, item: CartItem) -> Decimal:
-        return self.percent
-
-
-@dataclass
-class CategoryDiscountRule(DiscountRule):
-    category: str
-    percent: Decimal
-    name: str = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.name = f"Extra {self.percent}% off on {self.category}"
-
-    def applies_to(self, item: CartItem) -> bool:
-        return item.product.category.lower() == self.category.lower()
-
-    def percent_off(self, item: CartItem) -> Decimal:
-        return self.percent
-
-
-@dataclass
-class BankOfferRule:
-    bank_name: str
-    percent: Decimal
-    name: str = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.name = f"{self.percent}% instant discount on {self.bank_name} cards"
-
-    def applies_to(self, payment_info: Optional[PaymentInfo]) -> bool:
-        return bool(
-            payment_info
-            and payment_info.bank_name
-            and payment_info.bank_name.lower() == self.bank_name.lower()
-        )
-
-
-@dataclass
-class VoucherRule:
-    code: str
-    percent: Decimal
-    excluded_brands: List[str] = field(default_factory=list)
-    allowed_categories: Optional[List[str]] = None
-    min_tier: Optional[CustomerTier] = None
-    name: str = field(init=False)
-
-    def __post_init__(self) -> None:
-        self.name = f"Voucher {self.code} ({self.percent}% off)"
-
-    _TIER_RANK = {CustomerTier.NEW: 0, CustomerTier.REGULAR: 1, CustomerTier.VIP: 2}
-
-    def eligibility(self, cart_items: List[CartItem], customer: CustomerProfile) -> tuple[bool, str]:
-        if self.min_tier and self._TIER_RANK[customer.tier] < self._TIER_RANK[self.min_tier]:
-            return False, f"Voucher {self.code} requires {self.min_tier.value} tier or above"
-
-        eligible_items = [item for item in cart_items if self.applies_to(item)]
-        if not eligible_items:
-            return False, f"Voucher {self.code} does not apply to any item in the cart"
-
-        return True, f"Voucher {self.code} applied"
-
-    def applies_to(self, item: CartItem) -> bool:
-        if item.product.brand.lower() in (b.lower() for b in self.excluded_brands):
-            return False
-        if self.allowed_categories and item.product.category.lower() not in (
-            c.lower() for c in self.allowed_categories
-        ):
-            return False
-        return True
-
-
-# ---------------------------------------------------------------------------
-# Service
-# ---------------------------------------------------------------------------
+from models import CartItem, CustomerProfile, DiscountedPrice, PaymentInfo
+from rules import BankOfferRule, BrandDiscountRule, CategoryDiscountRule, VoucherRule
 
 TWO_PLACES = Decimal("0.01")
 
@@ -271,8 +104,8 @@ class DiscountService:
             if not voucher:
                 messages.append(f"Voucher {voucher_code} does not exist")
             else:
-                ok, reason = voucher.eligibility(cart_items, customer)
-                messages.append(reason if ok else reason)
+                _ok, reason = voucher.eligibility(cart_items, customer)
+                messages.append(reason)
 
         if payment_info:
             for rule in self.bank_rules:

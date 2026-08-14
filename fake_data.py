@@ -7,14 +7,8 @@
 
 from decimal import Decimal
 
-from discount_service import (
-    BrandTier,
-    CartItem,
-    CustomerProfile,
-    CustomerTier,
-    PaymentInfo,
-    Product,
-)
+from enums import BrandTier, CustomerTier
+from models import CartItem, CustomerProfile, PaymentInfo, Product
 
 puma_tshirt = Product(
     id="prod-puma-tshirt-001",

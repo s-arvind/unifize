@@ -7,9 +7,22 @@ Implementation of `PROBLEM_STATEMENT.md` (Unifize Backend Developer Assignment, 
 ```bash
 pip install -r requirements.txt
 pytest -v
+
+uvicorn main:app --reload
+# → http://127.0.0.1:8000/docs for interactive Swagger UI
 ```
 
-To poke at it directly:
+Example request:
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/discounts/calculate -H "Content-Type: application/json" -d '{
+  "cart_items": [{"product": {"id":"p1","brand":"PUMA","brand_tier":"premium","category":"T-shirts","base_price":"1500.00","current_price":"1500.00"}, "quantity":1, "size":"M"}],
+  "customer": {"id":"c1","tier":"regular"},
+  "payment_info": {"method":"CARD","bank_name":"ICICI","card_type":"CREDIT"}
+}'
+```
+
+To poke at the service layer directly, without the API:
 
 ```bash
 python3 -c "
@@ -27,9 +40,16 @@ asyncio.run(main())
 
 ## Files
 
-- `discount_service.py` — data models, discount rules, `DiscountService`. Kept in one file per request.
+- `enums.py` — `BrandTier`, `CustomerTier`.
+- `models/` — dataclass domain layer (`Product`, `CartItem`, `PaymentInfo`, `CustomerProfile`, `DiscountedPrice`). No FastAPI/pydantic dependency.
+- `rules.py` — one class per discount type (`BrandDiscountRule`, `CategoryDiscountRule`, `VoucherRule`, `BankOfferRule`).
+- `discount_service.py` — `DiscountService`, the given core interface.
+- `schemas/` — pydantic request/response DTOs for the API layer, with `to_domain()` converters into `models/`. Kept separate so the service logic stays framework-agnostic.
+- `routers.py` — FastAPI `APIRouter` with `POST /discounts/calculate` and `POST /discounts/validate`.
+- `main.py` — FastAPI app, mounts the router, `/health` endpoint.
 - `fake_data.py` — the doc's dummy scenario (PUMA T-shirt, T-shirts category, ICICI bank offer).
-- `test_discount_service.py` — pytest coverage of the happy path.
+- `tests/test_discount_service.py` — pytest coverage of the service layer.
+- `tests/test_api.py` — pytest coverage of the HTTP layer via FastAPI's `TestClient`.
 - `PROBLEM_STATEMENT.md` — the assignment text as given, saved for reference.
 
 ## Design
