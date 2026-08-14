@@ -14,6 +14,13 @@ DISCOUNT_RULES = "discount_rules"  # core.db entity name for DiscountRule record
 
 _TIER_RANK = {CustomerTier.NEW: 0, CustomerTier.REGULAR: 1, CustomerTier.VIP: 2}
 
+_REQUIRED_FIELD_BY_TYPE = {
+    DiscountType.BRAND: "brand",
+    DiscountType.CATEGORY: "category",
+    DiscountType.VOUCHER: "code",
+    DiscountType.BANK_OFFER: "bank_name",
+}
+
 
 @dataclass(kw_only=True)
 class DiscountRule(Entity):
@@ -31,6 +38,14 @@ class DiscountRule(Entity):
     min_tier: Optional[CustomerTier] = None
     # DiscountType.BANK_OFFER
     bank_name: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not (Decimal("0") < self.percent <= Decimal("100")):
+            raise ValueError(f"percent must be in (0, 100], got {self.percent}")
+
+        required_field = _REQUIRED_FIELD_BY_TYPE[self.type]
+        if getattr(self, required_field) is None:
+            raise ValueError(f"{self.type.value} discount requires '{required_field}' to be set")
 
     @property
     def name(self) -> str:

@@ -50,6 +50,18 @@ def test_validate_discount_code_endpoint_true_for_applicable_voucher():
     assert response.json() == {"valid": True}
 
 
+def test_calculate_discounts_endpoint_returns_400_for_domain_validation_error():
+    payload = {
+        "cart_items": [{**CALCULATE_PAYLOAD["cart_items"][0], "quantity": 0}],
+        "customer": CALCULATE_PAYLOAD["customer"],
+    }
+
+    response = client.post("/discounts/calculate", json=payload)
+
+    assert response.status_code == 400
+    assert "quantity" in response.json()["detail"]
+
+
 def test_validate_discount_code_endpoint_false_for_unknown_code():
     response = client.post(
         "/discounts/validate",

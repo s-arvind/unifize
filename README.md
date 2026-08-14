@@ -50,7 +50,7 @@ asyncio.run(main())
 - `services/discount_service.py` — `DiscountService`, the given core interface. Holds no rule state itself — reads the current `DiscountRule` catalog from `core.db` (entity `DISCOUNT_RULES`) on every call, so rules added/removed at runtime take effect immediately.
 - `schemas/` — pydantic request/response DTOs for the API layer, with `to_entity()` converters into `models/`. Kept separate so the service logic stays framework-agnostic.
 - `routers/discounts.py` — FastAPI `APIRouter` with `POST /discounts/calculate` and `POST /discounts/validate`.
-- `main.py` — FastAPI app, mounts the router, `/health` endpoint, seeds `core.db` at import so the API works out of the box.
+- `main.py` — FastAPI app, mounts the router, `/health` endpoint, seeds `core.db` at import so the API works out of the box. Also registers exception handlers: domain validation errors (`ValueError`, e.g. bad quantity) → `400`, anything else unhandled → `500` with a generic message.
 - `core/db.py` — `InMemoryDB`, a singleton keyed by entity name then record key (`insert`/`find_one`/`find`/`update`/`delete`/`clear`).
 - `seed.py` — populates `core.db` with the doc's dummy scenario (PUMA T-shirt, T-shirts category, ICICI bank offer, SUPER69 voucher) *and* the discount rule catalog `DiscountService` reads. `seed()` clears and re-inserts, so it's safe to call more than once.
 - `tests/test_discount_service.py` — pytest coverage of the service layer.
@@ -67,6 +67,9 @@ bucket per rule class. `DiscountService` holds no rule state of its own — it r
 category → coupon codes → bank offers.
 
 If multiple brand or category rules exist that match the same item, only the best one (highest `percent`) is applied.
+
+`DiscountRule.percent` must be in `(0, 100]`, enforced at construction. `_percent_of` also caps any single
+discount at the amount it's discounting from, as a second guard against a negative price.
 
 Stacking is sequential/multiplicative on the per-item price (each stage discounts the *already-discounted*
 price, not the original), which matches the "Additional 10% off" wording in the business scenario. Bank

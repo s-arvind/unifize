@@ -13,8 +13,9 @@ from models import DISCOUNT_RULES, CartItem, CustomerProfile, DiscountedPrice, D
 
 
 def _percent_of(amount: int, percent: Decimal) -> int:
-    """amount * percent / 100 in paisa, rounded half up."""
-    return int((Decimal(amount) * percent / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    """amount * percent / 100 in paisa, rounded half up, capped at `amount` (a >100% rule can't go negative)."""
+    raw = int((Decimal(amount) * percent / Decimal(100)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return min(raw, amount)
 
 
 def _best_match(rules: List[DiscountRule], matches: Callable[[DiscountRule], bool]) -> Optional[DiscountRule]:

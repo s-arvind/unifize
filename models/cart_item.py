@@ -9,3 +9,7 @@ class CartItem(Entity):
     product: Product
     quantity: int
     size: str
+
+    def __post_init__(self) -> None:
+        if self.quantity < 1:
+            raise ValueError(f"quantity must be >= 1, got {self.quantity}")
